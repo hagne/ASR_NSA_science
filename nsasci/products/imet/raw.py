@@ -13,8 +13,9 @@ def read_file(path, check4 = 'POPS'):
     return out
 
 def read_csv(path, drop_labels=['date [y-m-d GMT]', 'time [h:m:s GMT]', 'milliseconds', 'seconds since midnight [GMT]',
-                                'elapsed minutes']):
-    assert ('POPS' in path.name)
+                                'elapsed minutes'],
+             verbose = False):
+    # assert ('POPS' in path.name)
 
     def read_header(path):
         with path.open() as rein:
@@ -34,10 +35,12 @@ def read_csv(path, drop_labels=['date [y-m-d GMT]', 'time [h:m:s GMT]', 'millise
         #         print(rein.readline())
         out = {}
         out['lines'] = i
+        if verbose:
+            print()
         return out
 
     def read_data(path, header_lines):
-        df = pd.read_csv(path, skiprows=header_lines)  # i
+        df = pd.read_csv(path, skiprows=header_lines, usecols = range(27))  # i
 
         # missing data
         df[df == 99999] = np.nan
@@ -143,8 +146,11 @@ def read_xlsx(fn, drop_labels = ['date [y-m-d GMT]', 'time [h:m:s GMT]', 'millis
 
     splitt = fn.name.split('_')
     assert (len(splitt) == 6)
-    assert ('SSN' in splitt[-3])
-    out['popssn'] = splitt[-3][-2:]
+    if 'SSN' not in splitt[-3]:
+        popssn = '00'
+    else:
+        popssn= splitt[-3][-2:]
+    out['popssn'] = popssn
 
     if verbose:
         print('done')
