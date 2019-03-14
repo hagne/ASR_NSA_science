@@ -101,7 +101,7 @@ class Data(object):
     def previous(self):
         idx = self.path2data_list.index(self.path2active)
         if idx == 0:
-            print('first')
+            self.controller.send_message('first')
             pass
         elif idx == -1:
             raise ValueError('not possibel')
@@ -111,7 +111,7 @@ class Data(object):
     def next(self):
         idx = self.path2data_list.index(self.path2active)
         if idx == len(self.path2data_list) - 1:
-            print('last')
+            self.controller.send_message('last')
             pass
         elif idx == -1:
             raise ValueError('not possibel')
@@ -148,13 +148,19 @@ class Plot(object):
         return self.a, self.at
 
     def event_handling(self):
-        def onclick(event):
-            self.controller.send_message('{},{}'.format(event.xdata, event.ydata))
-            # self.controller.event = event
+        # def onclick(event):
+        #     self.controller.send_message('{},{}'.format(event.xdata, event.ydata))
+        #     # self.controller.event = event
 
         def on_key(event):
-            self.controller.send_message('key: {}'.format(event.key))
+            # self.controller.send_message('key: {}'.format(event.key))
             self.controller.event = event
+            if event.key == 'z':
+                dt = pd.to_datetime(plt.num2date(event.xdata).strftime('%Y-%m-%d %H:%M:%S'))
+                self.controller.view.controlls.accordeon_start.value = dt.__str__()
+            elif event.key == 'x':
+                dt = pd.to_datetime(plt.num2date(event.xdata).strftime('%Y-%m-%d %H:%M:%S'))
+                self.controller.view.controlls.accordeon_end.value = dt.__str__()
 
         self.f.canvas.mpl_connect('key_press_event', on_key)
 
@@ -300,15 +306,35 @@ class Controlls(object):
 
         # accordeon
 
+        self.accordeon_start = widgets.Text(value='',
+                                            placeholder='hit z key',
+                                            description='start:',
+                                            disabled=False
+                                            )
+        self.accordeon_end = widgets.Text(value='',
+                                            placeholder='hit x key',
+                                            description='end:',
+                                            disabled=False
+                                            )
+        hbox_accordeon_start_stop = widgets.HBox([self.accordeon_start, self.accordeon_end])
+
+
+        self.dropdown_gps_bar_bad= widgets.Dropdown(options=['gps', 'baro', 'bad'],
+                                                    value='gps',
+                                                    description='which alt to use:',
+                                                    disabled=False,
+                                                    )
+
+        self.button_save_unsave_flight = widgets.Button(description = 'save/unsave flight')
+        # button_bind_measurements.on_click(self.deprecated_on_button_bind_measurements)
+        self.button_save_unsave_flight.on_click(self.on_button_save_flight)
+
+        hbox_accordeon_source_save_flight = widgets.HBox([self.dropdown_gps_bar_bad, self.button_save_unsave_flight])
+
         # self.accordeon_assigned = widgets.Valid(value=False,
         #                                         description='bound?',
         #                                         )
         #
-        # self.dropdown_popssn= widgets.Dropdown(options=['00', '14', '18'],
-        #                                             # value='2',
-        #                                             description='popssn',
-        #                                             disabled=False,
-        #                                             )
         #
         # self.inttext_deltat = widgets.IntText(value=0,
         #                                       description='deltat',
@@ -322,31 +348,39 @@ class Controlls(object):
         #
         #
         #
-        # accordon_box = widgets.VBox([self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.button_bind_measurements])
-        # accordion_children = [accordon_box]
-        # accordion = widgets.Accordion(children=accordion_children)
-        # accordion.set_title(0,'do_stuff')
+        accordon_box = widgets.VBox([hbox_accordeon_start_stop,hbox_accordeon_source_save_flight])#[self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.button_bind_measurements])
+        accordion_children = [accordon_box]
+        accordion = widgets.Accordion(children=accordion_children)
+        accordion.set_title(0,'do_stuff')
 
         # messages
         self.messages = widgets.Textarea('\n'.join(self.controller._message), layout={'width': '100%'})
         # message_box = widgets.HBox([self.messages])
         # OverVbox
 
-        overVbox = widgets.VBox([tab, self.messages])
+        overVbox = widgets.VBox([tab, accordion, self.messages])
         display(overVbox)
         ####################
         self.update_d1()
         self.update_d2()
         self.update_accordeon()
 
-    def on_inttext_deltat(self, evt):
-        if evt['name'] == "value":
-            self.controller.data.delta_t = int(evt['new'])
-            dt = int(evt['new']) - int(evt['old'])
-            self.controller.data.dataset2.active.data = self.controller.data.dataset2.active.data.shift(periods=-dt,
-                                                                                  freq=pd.to_timedelta(1, 's'))
-            self.controller.view.plot.update_2(keep_limits = True)
+    # def on_inttext_deltat(self, evt):
+    #     if evt['name'] == "value":
+    #         self.controller.data.delta_t = int(evt['new'])
+    #         dt = int(evt['new']) - int(evt['old'])
+    #         self.controller.data.dataset2.active.data = self.controller.data.dataset2.active.data.shift(periods=-dt,
+    #                                                                               freq=pd.to_timedelta(1, 's'))
+    #         self.controller.view.plot.update_2(keep_limits = True)
 
+
+    def on_button_save_flight(self, event):
+        self.controller.event = event
+        self.controller.database.add_flight()
+        self.accordeon_end.value = ''
+        self.accordeon_start.value = ''
+        self.dropdown_gps_bar_bad.value = 'gps'
+        pass
 
     def update_d1(self):
         self.d1_text_path.value = self.controller.data.dataset1.path2active.name
@@ -418,9 +452,6 @@ class Controlls(object):
         self.update_accordeon()
         self.controller.view.plot.update_2()
 
-    def deprecated_on_button_bind_measurements(self, evt):
-        self.controller.database.bind_measurements()
-
     def on_button_bind_measurements(self, evt):
         if evt['name'] == 'value':
             if evt['new'] == True:
@@ -435,9 +466,17 @@ class Database(database.NsaSciDatabase):
         # super().__init__(path2db)
         self.path2db = path2db
         self.controller = controller
-        self.tbl_name = 'match_datasets_imet_pops'
+        self.tbl_name = 'flights'
 
-    # def add_active_set(self):
+    def add_flight(self):
+        rdict = dict(flight_id='',
+                     start=self.controller.view.controlls.accordeon_start.value,
+                     end=self.controller.view.controlls.accordeon_end.value,
+                     alt_source=self.controller.view.controlls.dropdown_gps_bar_bad.value,
+                     iMet_fname=self.controller.data.dataset1.path2active.name)
+
+        # pd.to_datetime(cont.view.controlls.accordeon_start.value), pd.to_datetime(
+        #     cont.view.controlls.accordeon_end.value), cont.view.controlls.dropdown_gps_bar_bad.value, cont.data.dataset1.path2active.name
     #     imet_active_name = self.controller.data.dataset1.path2active.name
     #     pops_active_name = self.controller.data.dataset2.path2active.name
     #
@@ -446,33 +485,34 @@ class Database(database.NsaSciDatabase):
     #                popssn=self.controller.view.controlls.dropdown_popssn.value,
     #                delta_t_s= self.controller.data.delta_t
     #                )
-    #     with sqlite3.connect(self.path2db) as db:
-    #         # get next index
-    #         # qu = 'select Max(idx) from match_datasets_imet_pops'
-    #         # next_idx = pd.read_sql(qu, db).iloc[0, 0]
-    #         # if not next_idx:
-    #         #     next_idx = 1
-    #         # else:
-    #         #     next_idx = int(next_idx) + 1
-    #         qu = 'select idx from match_datasets_imet_pops'
-    #         next_idx = pd.read_sql(qu, db)  # .iloc[0, 0]
-    #         next_idx = next_idx.astype(int).max().iloc[0]
-    #         if not next_idx:
-    #             next_idx = 1
-    #         else:
-    #             next_idx = int(next_idx) + 1
-    #
-    #
-    #         df = pd.DataFrame(dic, index=[next_idx])
-    #         df.index.name = 'idx'
+        with sqlite3.connect(self.path2db) as db:
+            # get next index
+            # qu = 'select Max(idx) from match_datasets_imet_pops'
+            # next_idx = pd.read_sql(qu, db).iloc[0, 0]
+            # if not next_idx:
+            #     next_idx = 1
+            # else:
+            #     next_idx = int(next_idx) + 1
+            qu = 'select id from {}'.format(self.tbl_name)
+            next_idx = pd.read_sql(qu, db)  # .iloc[0, 0]
+            next_idx = next_idx.astype(int).max().iloc[0]
+            if np.isnan(next_idx):
+                next_idx = 1
+            else:
+                next_idx = int(next_idx) + 1
+
+
+            df = pd.DataFrame(rdict, index=[next_idx])
+            df.index.name = 'id'
+
     #
     #         # self.add_line2db(df, 'match_datasets_imet_pops')
     #         table_name = 'match_datasets_imet_pops'
     #
-    #         df.to_sql(table_name, db,
-    #                 #                  if_exists='replace'
-    #                 if_exists='append'
-    #                 )
+            df.to_sql(self.tbl_name, db,
+                    #                  if_exists='replace'
+                    if_exists='append'
+                    )
 
     # def update_values(self):
     #     qu = """UPDATE match_datasets_imet_pops
