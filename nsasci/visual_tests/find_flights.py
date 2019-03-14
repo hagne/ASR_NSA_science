@@ -49,7 +49,7 @@ class Data_container(object):
             self.dataset2 = None
 
 class Data(object):
-    def __init__(self, datacontainer, path2data, read_data, glob_pattern = '*'):
+    def __init__(self, datacontainer, path2data, read_data, load_all = True , glob_pattern = '*'):
         self.controller = datacontainer.controller
         self._datacontainer = datacontainer
         self.read_data = read_data
@@ -58,7 +58,30 @@ class Data(object):
 
 
         self.path2data_list = sorted(list(path2data.glob(glob_pattern)))
+
+        if load_all:
+            self.load_all()
+
+        self._load_all = load_all
         self.path2active = self.path2data_list[0]
+
+    def load_all(self):
+        data_list = []
+        data_info_list = []
+        for path in self.path2data_list:
+            df = self.read_data(path)
+            add_on = path.name.split('.')[-2][-2:]
+            df.columns = ['_'.join([col, add_on]) for col in df.columns]
+            data_list.append(df)
+
+            dffi = dict(t_start=df.index.min(),
+                        t_end=df.index.max(),
+                        v_max=df.max().max(),
+                        v_min=df.min().min())
+            data_info_list.append(pd.DataFrame(dffi, index=[path.name]))
+
+        self.active = pd.concat(data_list, sort = True)
+        self.active_info = pd.concat(data_info_list, sort = True)
 
     @property
     def path2active(self):
@@ -68,9 +91,12 @@ class Data(object):
     def path2active(self, value):
         self._datacontainer.delta_t = 0
         self._path2active = value
-        self.controller.send_message('opening {}'.format(self._path2active.name))
-        # print(self._path2active.name)
-        self.active = self.read_data(self._path2active)
+        if self._load_all:
+            return
+        else:
+            self.controller.send_message('opening {}'.format(self._path2active.name))
+            # print(self._path2active.name)
+            self.active = self.read_data(self._path2active)
 
     def previous(self):
         idx = self.path2data_list.index(self.path2active)
@@ -118,7 +144,21 @@ class Plot(object):
         self.plot_active_d1()
         self.plot_active_d2()
         self.update_xlim()
+        self.event_handling()
         return self.a, self.at
+
+    def event_handling(self):
+        def onclick(event):
+            self.controller.send_message('{},{}'.format(event.xdata, event.ydata))
+            # self.controller.event = event
+
+        def on_key(event):
+            self.controller.send_message('key: {}'.format(event.key))
+            self.controller.event = event
+
+        self.f.canvas.mpl_connect('key_press_event', on_key)
+
+        # self.f.canvas.mpl_connect('button_press_event', onclick)
 
     def plot_active_d1(self):
         # self.controller.data.dataset1.active.data['altitude (from iMet PTU) [km]'].plot(ax = self.a, label = 'altitude (from iMet PTU) [km]')
@@ -127,8 +167,12 @@ class Plot(object):
         self.a.legend(loc = 2)
 
     def update_1(self):
-        self.a.clear()
-        self.plot_active_d1()
+        if isinstance(self.controller.data.dataset1._load_all, type(None)):
+            self.a.clear()
+            self.plot_active_d1()
+        else:
+            finfo = self.controller.data.dataset1.active_info.loc[self.controller.data.dataset1.path2active.name, :]
+            self.a.set_ylim(finfo.v_min, finfo.v_max)
         self.update_xlim()
 
     def plot_active_d2(self):
@@ -155,12 +199,18 @@ class Plot(object):
             self.at.set_ylim(ylim)
 
     def update_xlim(self):
-        if not isinstance(self.controller.data.dataset2, type(None)):
-            xmin = np.min([self.controller.data.dataset1.active.index.min(), self.controller.data.dataset2.active.data.index.min()])
-            xmax = np.max([self.controller.data.dataset1.active.index.max(), self.controller.data.dataset2.active.data.index.max()])
+        if isinstance(self.controller.data.dataset1._load_all, type(None)):
+            if not isinstance(self.controller.data.dataset2, type(None)):
+                xmin = np.min([self.controller.data.dataset1.active.index.min(), self.controller.data.dataset2.active.data.index.min()])
+                xmax = np.max([self.controller.data.dataset1.active.index.max(), self.controller.data.dataset2.active.data.index.max()])
+            else:
+                xmin = self.controller.data.dataset1.active.index.min()
+                xmax = self.controller.data.dataset1.active.index.max()
         else:
-            xmin = self.controller.data.dataset1.active.index.min()
-            xmax = self.controller.data.dataset1.active.index.max()
+            finfo = self.controller.data.dataset1.active_info.loc[self.controller.data.dataset1.path2active.name, :]
+            xmin, xmax = (finfo.t_start, finfo.t_end)
+        # if self.controller.data.dataset1._load_all:
+
         self.a.set_xlim(xmin, xmax)
 
 
