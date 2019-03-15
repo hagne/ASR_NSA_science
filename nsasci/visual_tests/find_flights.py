@@ -31,6 +31,7 @@ def read_iMet(path):
 
     df = pd.DataFrame({'alt_gps': alt_gps,
               'alt_bar': alt_bar})
+    df *= 1000
     return df
 
 class Data_container(object):
@@ -134,11 +135,12 @@ class Plot(object):
         self.f = None
         self.a = None
         self.at = None
+        self._tmp_alt_x = 0
 
     def initiate(self):
         self.f, self.a = plt.subplots()
         self.f.autofmt_xdate()
-
+        self.a.grid(True)
         # self.at = self.a.twinx()
 
         self.plot_active_d1()
@@ -148,8 +150,17 @@ class Plot(object):
 
         out = self.controller.database.get_all_flights()
         for idx, flight in out.iterrows():
-            self.controller.view.plot.plot_flight_duration(flight.start, flight.end)
+            self.controller.view.plot.plot_flight_duration(flight.start, flight.end, flight.alt, flight.alt_source)
 
+        custom_lines = [plt.Line2D([0], [0], color=colors[0], alpha = 0.3, lw=5),
+                        plt.Line2D([0], [0], color=colors[1], alpha = 0.3, lw=5),
+                        plt.Line2D([0], [0], color='0.5', alpha = 0.3, lw=5),]
+
+        # fig, ax = plt.subplots()
+        # lines = self..plot(data)
+        legend_source = self.a.legend(custom_lines, ['gps', 'baro', 'bad'], loc = 1)
+        self.a.legend(loc = 2)
+        self.a.add_artist(legend_source)
         return self.a, None #self.at
 
 
@@ -169,6 +180,7 @@ class Plot(object):
                 self.controller.view.controlls.accordeon_end.value = dt.__str__()
             elif event.key == 'a':
                 self.controller.view.controlls.accordeon_alt.value = str(event.ydata)
+                self._tmp_alt_x = event.xdata
 
         self.f.canvas.mpl_connect('key_press_event', on_key)
 
@@ -178,7 +190,7 @@ class Plot(object):
         # self.controller.data.dataset1.active.data['altitude (from iMet PTU) [km]'].plot(ax = self.a, label = 'altitude (from iMet PTU) [km]')
         # self.controller.data.dataset1.active.data['GPS altitude [km]'].plot(ax = self.a, label = 'GPS altitude [km]')
         self.controller.data.dataset1.active.plot(ax = self.a)
-        self.a.legend(loc = 2)
+        # self.a.legend(loc = 2)
 
     def update_1(self):
         if isinstance(self.controller.data.dataset1._load_all, type(None)):
@@ -192,7 +204,7 @@ class Plot(object):
     def plot_active_d2(self):
         if not isinstance(self.controller.data.dataset2, type(None)):
             self.controller.data.dataset2.active.data.Altitude.plot(ax = self.at, color = colors[2])
-            self.at.legend(loc = 1)
+            # self.at.legend(loc = 1)
             return True
         else:
             return False
@@ -227,12 +239,36 @@ class Plot(object):
 
         self.a.set_xlim(xmin, xmax)
 
-    def plot_flight_duration(self, start=None, end=None):
+    def plot_flight_duration(self, start=None, end=None, alt = None, alt_source = None):
         if isinstance(start, type(None)):
             start = self.controller.view.controlls.accordeon_start.value
         if isinstance(end, type(None)):
             end = self.controller.view.controlls.accordeon_end.value
-        self.a.axvspan(start, end, alpha=0.3, picker=5)
+        if isinstance(alt, type(None)):
+            self.controller.send_message('test alt: {}'.format(self.controller.view.controlls.accordeon_alt.value))
+            alt = float(self.controller.view.controlls.accordeon_alt.value)
+        if isinstance(alt_source, type(None)):
+            alt_source = self.controller.view.controlls.dropdown_gps_bar_bad.value
+
+        if alt_source == 'gps':
+            col = colors[0]
+            label = 'gps'
+        elif alt_source == 'baro':
+            col = colors[1]
+            label = 'baro'
+        elif alt_source == 'bad':
+            col = '0.5'
+            label = 'bad'
+        else:
+            raise ValueError('{} is not an option'.format(alt_source))
+
+        self.a.axvspan(start, end, alpha=0.3, picker=5, color = col)
+
+        self.controller.send_message('start: {}'.format(start))
+        self.controller.send_message('end: {}'.format(end))
+        self.controller.send_message('alt: {}'.format(alt))
+        self.a.plot([pd.to_datetime(start),pd.to_datetime(end)],[float(alt),float(alt)], color = 'black', ls = '--')
+
 
 class Controlls(object):
     def __init__(self, view):
@@ -394,6 +430,26 @@ class Controlls(object):
 
 
     def on_button_save_flight(self, event):
+
+        start = self.controller.view.controlls.accordeon_start.value
+        if isinstance(pd.to_datetime(start), pd._libs.tslibs.nattype.NaTType):
+            self.controller.send_message('error concerning start. Value provided: "{}"'.format(start))
+            return
+
+        end = self.controller.view.controlls.accordeon_end.value
+        if isinstance(pd.to_datetime(end), pd._libs.tslibs.nattype.NaTType):
+            self.controller.send_message('error concerning end. Value provided: "{}"'.format(end))
+            return
+
+        alt = self.controller.view.controlls.accordeon_alt.value
+        try:
+            float(alt)
+        except ValueError:
+            self.controller.send_message('error concerning altitude. Value provided: "{}"'.format(alt))
+            return
+
+
+
         self.controller.event = event
         self.controller.view.plot.plot_flight_duration()
         self.controller.database.add_flight()
@@ -401,7 +457,6 @@ class Controlls(object):
         self.accordeon_start.value = ''
         self.accordeon_alt.value = ''
         self.dropdown_gps_bar_bad.value = 'gps'
-        self.controller.view.plot.plot_flight_duration()
 
     def update_d1(self):
         self.d1_text_path.value = self.controller.data.dataset1.path2active.name
@@ -499,7 +554,7 @@ class Database(database.NsaSciDatabase):
         rdict = dict(flight_id='',
                      start=self.controller.view.controlls.accordeon_start.value,
                      end=self.controller.view.controlls.accordeon_end.value,
-                     alt = float(self.controller.view.controlls.accordeon_alt.value) * 1000,
+                     alt = float(self.controller.view.controlls.accordeon_alt.value),
                      alt_source=self.controller.view.controlls.dropdown_gps_bar_bad.value,
                      iMet_fname=self.controller.data.dataset1.path2active.name)
 
