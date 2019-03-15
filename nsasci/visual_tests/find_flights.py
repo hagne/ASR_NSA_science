@@ -139,13 +139,19 @@ class Plot(object):
         self.f, self.a = plt.subplots()
         self.f.autofmt_xdate()
 
-        self.at = self.a.twinx()
+        # self.at = self.a.twinx()
 
         self.plot_active_d1()
         self.plot_active_d2()
         self.update_xlim()
         self.event_handling()
-        return self.a, self.at
+
+        out = self.controller.database.get_all_flights()
+        for idx, flight in out.iterrows():
+            self.controller.view.plot.plot_flight_duration(flight.start, flight.end)
+
+        return self.a, None #self.at
+
 
     def event_handling(self):
         # def onclick(event):
@@ -153,7 +159,7 @@ class Plot(object):
         #     # self.controller.event = event
 
         def on_key(event):
-            # self.controller.send_message('key: {}'.format(event.key))
+            self.controller.send_message('key: {}'.format(event.key))
             self.controller.event = event
             if event.key == 'z':
                 dt = pd.to_datetime(plt.num2date(event.xdata).strftime('%Y-%m-%d %H:%M:%S'))
@@ -161,6 +167,8 @@ class Plot(object):
             elif event.key == 'x':
                 dt = pd.to_datetime(plt.num2date(event.xdata).strftime('%Y-%m-%d %H:%M:%S'))
                 self.controller.view.controlls.accordeon_end.value = dt.__str__()
+            elif event.key == 'a':
+                self.controller.view.controlls.accordeon_alt.value = str(event.ydata)
 
         self.f.canvas.mpl_connect('key_press_event', on_key)
 
@@ -219,6 +227,12 @@ class Plot(object):
 
         self.a.set_xlim(xmin, xmax)
 
+    def plot_flight_duration(self, start=None, end=None):
+        if isinstance(start, type(None)):
+            start = self.controller.view.controlls.accordeon_start.value
+        if isinstance(end, type(None)):
+            end = self.controller.view.controlls.accordeon_end.value
+        self.a.axvspan(start, end, alpha=0.3, picker=5)
 
 class Controlls(object):
     def __init__(self, view):
@@ -316,6 +330,11 @@ class Controlls(object):
                                             description='end:',
                                             disabled=False
                                             )
+        self.accordeon_alt = widgets.Text(value='',
+                                          placeholder='hit a key',
+                                          description='altitude:',
+                                          disabled=False
+                                          )
         hbox_accordeon_start_stop = widgets.HBox([self.accordeon_start, self.accordeon_end])
 
 
@@ -329,7 +348,7 @@ class Controlls(object):
         # button_bind_measurements.on_click(self.deprecated_on_button_bind_measurements)
         self.button_save_unsave_flight.on_click(self.on_button_save_flight)
 
-        hbox_accordeon_source_save_flight = widgets.HBox([self.dropdown_gps_bar_bad, self.button_save_unsave_flight])
+        hbox_accordeon_alt_source = widgets.HBox([self.dropdown_gps_bar_bad, self.accordeon_alt])
 
         # self.accordeon_assigned = widgets.Valid(value=False,
         #                                         description='bound?',
@@ -348,7 +367,7 @@ class Controlls(object):
         #
         #
         #
-        accordon_box = widgets.VBox([hbox_accordeon_start_stop,hbox_accordeon_source_save_flight])#[self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.button_bind_measurements])
+        accordon_box = widgets.VBox([hbox_accordeon_start_stop, hbox_accordeon_alt_source, self.button_save_unsave_flight])#[self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.button_bind_measurements])
         accordion_children = [accordon_box]
         accordion = widgets.Accordion(children=accordion_children)
         accordion.set_title(0,'do_stuff')
@@ -376,11 +395,13 @@ class Controlls(object):
 
     def on_button_save_flight(self, event):
         self.controller.event = event
+        self.controller.view.plot.plot_flight_duration()
         self.controller.database.add_flight()
         self.accordeon_end.value = ''
         self.accordeon_start.value = ''
+        self.accordeon_alt.value = ''
         self.dropdown_gps_bar_bad.value = 'gps'
-        pass
+        self.controller.view.plot.plot_flight_duration()
 
     def update_d1(self):
         self.d1_text_path.value = self.controller.data.dataset1.path2active.name
@@ -452,14 +473,14 @@ class Controlls(object):
         self.update_accordeon()
         self.controller.view.plot.update_2()
 
-    def on_button_bind_measurements(self, evt):
-        if evt['name'] == 'value':
-            if evt['new'] == True:
-                self.controller.database.bind_measurements()
-            if evt['new'] == False:
-                self.controller.database.unbind_measurements()
-            self.update_accordeon()
-        # print('baustelle')
+    # def on_button_bind_measurements(self, evt):
+    #     if evt['name'] == 'value':
+    #         if evt['new'] == True:
+    #             self.controller.database.bind_measurements()
+    #         if evt['new'] == False:
+    #             self.controller.database.unbind_measurements()
+    #         self.update_accordeon()
+    #     # print('baustelle')
 
 class Database(database.NsaSciDatabase):
     def __init__(self, controller, path2db):
@@ -468,10 +489,17 @@ class Database(database.NsaSciDatabase):
         self.controller = controller
         self.tbl_name = 'flights'
 
+    def get_all_flights(self):
+        qu = """Select * from flights"""
+        with sqlite3.connect(self.path2db)  as db:
+            out = pd.read_sql(qu, db)
+        return out
+
     def add_flight(self):
         rdict = dict(flight_id='',
                      start=self.controller.view.controlls.accordeon_start.value,
                      end=self.controller.view.controlls.accordeon_end.value,
+                     alt = float(self.controller.view.controlls.accordeon_alt.value) * 1000,
                      alt_source=self.controller.view.controlls.dropdown_gps_bar_bad.value,
                      iMet_fname=self.controller.data.dataset1.path2active.name)
 
