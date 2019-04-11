@@ -140,7 +140,6 @@ class Plot(object):
     def initiate(self):
         self.f, self.a = plt.subplots()
         self.f.autofmt_xdate()
-        self.a.grid(True)
         # self.at = self.a.twinx()
 
         self.plot_active_d1()
@@ -161,6 +160,7 @@ class Plot(object):
         legend_source = self.a.legend(custom_lines, ['gps', 'baro', 'bad'], loc = 1)
         self.a.legend(loc = 2)
         self.a.add_artist(legend_source)
+        self.a.grid(True)
         return self.a, None #self.at
 
 
@@ -256,7 +256,7 @@ class Plot(object):
         elif alt_source == 'baro':
             col = colors[1]
             label = 'baro'
-        elif alt_source == 'bad':
+        elif alt_source in ['bad', 'bad_but_usable_gps', 'bad_but_usable_baro']:
             col = '0.5'
             label = 'bad'
         else:
@@ -289,7 +289,18 @@ class Controlls(object):
         d1_button_next.on_click(self.on_d1_botton_next)
         d1_button_prev.on_click(self.on_d1_botton_prev)
 
-        d1_box_h_1 = widgets.HBox([d1_button_prev, d1_button_next])
+        d1_dropdown_fnames_options = [i.name for i in self.controller.data.dataset1.path2data_list]
+        d1_dropdown_fnames_value = self.controller.data.dataset1.path2active.name
+        self.d1_dropdown_fnames = widgets.Dropdown(options=d1_dropdown_fnames_options,
+                                                   value=d1_dropdown_fnames_value,
+                                                   #     description='N',
+                                                   # disabled=disable_data_2,
+                                                   )
+
+        self.d1_dropdown_fnames.observe(self.on_change_d1_dropdown_fnames)
+
+
+        d1_box_h_1 = widgets.HBox([d1_button_prev, d1_button_next, self.d1_dropdown_fnames])
         ###
         d1_vbox_childs.append(d1_box_h_1)
 
@@ -374,7 +385,7 @@ class Controlls(object):
         hbox_accordeon_start_stop = widgets.HBox([self.accordeon_start, self.accordeon_end])
 
 
-        self.dropdown_gps_bar_bad= widgets.Dropdown(options=['gps', 'baro', 'bad'],
+        self.dropdown_gps_bar_bad= widgets.Dropdown(options=['gps', 'baro', 'bad', 'bad_but_usable_gps', 'bad_but_usable_baro'],
                                                     value='gps',
                                                     description='which alt to use:',
                                                     disabled=False,
@@ -515,6 +526,19 @@ class Controlls(object):
             self.d2_text_path.value = self.controller.data.dataset2.path2active.name
             self.controller.view.plot.update_2()
 
+
+    def on_change_d1_dropdown_fnames(self, change):
+        # self.controller.test = change
+        # print(change)
+        if change['type'] == 'change' and change['name'] == 'value':
+            # print("changed to %s" % change['new'])
+            base = self.controller.data.dataset1.path2data
+            # self.controller.data.dataset2.active = base.joinpath(change['new'])
+            self.controller.data.dataset1.path2active = base.joinpath(change['new'])
+            # self.update_d2()
+            self.update_accordeon()
+            self.d1_text_path.value = self.controller.data.dataset1.path2active.name
+            self.controller.view.plot.update_1()
 
     def on_d2_botton_next(self, evt):
         self.controller.data.dataset2.next()
