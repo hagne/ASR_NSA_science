@@ -1,5 +1,5 @@
 from atmPy.aerosols.instruments import POPS
-import icarus
+# import icarus
 import pathlib
 
 import numpy as np

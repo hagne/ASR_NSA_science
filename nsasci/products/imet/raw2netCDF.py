@@ -2,6 +2,9 @@ import pandas as pd
 import xarray as xr
 import nsasci.products.imet.raw as raw
 
+version_log = ["v0.1 - This product unifys the iMet raw files (whenever POPS was involved).",
+               "v0.2 - 2019-04-22: using the rawfiles directly from the archive instead of the ones from Dari"]
+
 def generate_name(content):
     base = 'olitbsimet'
 
@@ -14,7 +17,7 @@ def generate_name(content):
     return name_new
 
 
-def create_dataset(content):
+def create_dataset(content, version = 'v0.1'):
     data = content['data'].copy()
 
     # problem with column names
@@ -31,7 +34,11 @@ def create_dataset(content):
     ds.attrs['version'] = '0.1'
     ds.attrs['underlying_products'] = ['iMet_raw']
     ds.attrs['flight_id'] = content['flight_id']
-    ds.attrs['info'] = ("v0.1 - This product unifys the iMet raw files (whenever POPS was involved).")
+
+
+    idx = [version in ver for ver in version_log].index(True)
+    log = '\n'.join(version_log[:idx + 1])
+    ds.attrs['info'] = log
     return ds
 
 
@@ -52,7 +59,30 @@ def version_0_1(path_in, path_out_base, skip_if_exists = True):
         return None
 
     ds = create_dataset(content)
+    #     path_out
 
+    ds.to_netcdf(path_out)
+    return ds
+
+
+def version_0_2(path_in, path_out_base, skip_if_exists = True):
+    """
+    * name is based on start time (not launch time)
+    :param path_in:
+    :param path_out_base:
+    :param skip_if_exists:
+    :return:
+    """
+    version = 'v0.2'
+    content = raw.read_file(path_in)
+
+    name_new = generate_name(content)
+    path_out = path_out_base.joinpath(name_new)
+    if path_out.is_file() and skip_if_exists:
+        print('\t File exists')
+        return None
+
+    ds = create_dataset(content, version = version)
     #     path_out
 
     ds.to_netcdf(path_out)

@@ -75,6 +75,10 @@ def read_csv(path, drop_labels=['date [y-m-d GMT]', 'time [h:m:s GMT]', 'millise
         flightno = int(splitt[-2])
         popssn = splitt[-3][-2:]
 
+    elif len(splitt) == 5:
+        flightno = int(splitt[-1].split('.')[0])
+        popssn = splitt[-2][-2:]
+
     elif len(splitt) == 4:
         flightno = 1
         if 'SSN' in splitt[-1]:
