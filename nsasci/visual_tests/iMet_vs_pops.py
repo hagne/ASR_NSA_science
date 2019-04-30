@@ -247,13 +247,21 @@ class Controlls(object):
                                               )
         self.inttext_deltat.observe(self.on_inttext_deltat)
 
+        self.dropdown_gps_bar_bad = widgets.Dropdown(
+            options=['gps', 'baro', 'bad', 'bad_but_usable_gps', 'bad_but_usable_baro'],
+            value='gps',
+            description='which alt to use:',
+            disabled=False,
+            )
+
+
         self.button_bind_measurements = widgets.ToggleButton(description = 'bind/unbind measurements')
         # button_bind_measurements.on_click(self.deprecated_on_button_bind_measurements)
         self.button_bind_measurements.observe(self.on_button_bind_measurements)
 
 
 
-        accordon_box = widgets.VBox([self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.button_bind_measurements])
+        accordon_box = widgets.VBox([self.accordeon_assigned, self.dropdown_popssn, self.inttext_deltat, self.dropdown_gps_bar_bad, self.button_bind_measurements])
         accordion_children = [accordon_box]
         accordion = widgets.Accordion(children=accordion_children)
         accordion.set_title(0,'do_stuff')
@@ -394,7 +402,8 @@ class Database(database.NsaSciDatabase):
         dic = dict(fn_imet=imet_active_name,
                    fn_pops=pops_active_name,
                    popssn=self.controller.view.controlls.dropdown_popssn.value,
-                   delta_t_s= self.controller.data.delta_t
+                   delta_t_s= self.controller.data.delta_t,
+                   which_alt = self.controller.view.controlls.dropdown_gps_bar_bad.value
                    )
         with sqlite3.connect(self.path2db) as db:
             # get next index
@@ -404,17 +413,26 @@ class Database(database.NsaSciDatabase):
             #     next_idx = 1
             # else:
             #     next_idx = int(next_idx) + 1
-            qu = 'select idx from match_datasets_imet_pops'
+            qu = 'select id from match_datasets_imet_pops'
             next_idx = pd.read_sql(qu, db)  # .iloc[0, 0]
             next_idx = next_idx.astype(int).max().iloc[0]
+            # print(next_idx)
+            # print(type(next_idx))
+            # print(type(next_idx).__name__)
+            # print(next_idx == np.nan)
+            # print(next_idx == np.float64(np.nan))
+            # print(float(next_idx) == float(np.nan))
+            # print(np.float64(next_idx) == np.float64(np.nan))
             if not next_idx:
+                next_idx = 1
+            elif np.isnan(next_idx):
                 next_idx = 1
             else:
                 next_idx = int(next_idx) + 1
 
 
             df = pd.DataFrame(dic, index=[next_idx])
-            df.index.name = 'idx'
+            df.index.name = 'id'
 
             # self.add_line2db(df, 'match_datasets_imet_pops')
             table_name = 'match_datasets_imet_pops'
@@ -460,7 +478,7 @@ class Database(database.NsaSciDatabase):
 
     def unbind_measurements(self):
         with sqlite3.connect(self.path2db) as db:
-            qu = 'DELETE from {} WHERE idx = {}'.format(self.tbl_name, self.active_set().idx[0])
+            qu = 'DELETE from {} WHERE id = {}'.format(self.tbl_name, self.active_set().id[0])
             db.execute(qu)
 
 

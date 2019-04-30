@@ -42,7 +42,7 @@ def create_dataset(content, version = 'v0.1'):
     return ds
 
 
-def version_0_1(path_in, path_out_base, skip_if_exists = True):
+def version_0_1(path_in, path_out_base, skip_if_exists = True, verbose = False):
     """
     * name is based on start time (not launch time)
     :param path_in:
@@ -50,9 +50,15 @@ def version_0_1(path_in, path_out_base, skip_if_exists = True):
     :param skip_if_exists:
     :return:
     """
+    if verbose:
+        print('read file: {}'.format(path_in.name), end='\t...\t')
     content = raw.read_file(path_in)
+    if verbose:
+        print('done')
 
     name_new = generate_name(content)
+    if verbose:
+        print('new name: {}'.format(name_new))
     path_out = path_out_base.joinpath(name_new)
     if path_out.is_file() and skip_if_exists:
         print('\t File exists')
