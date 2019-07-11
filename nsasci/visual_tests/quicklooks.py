@@ -11,10 +11,10 @@ import matplotlib.pylab as plt
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class Data(object):
-    def __init__(self, kazr=True, ceilometer=True, timezone = -9):
+    def __init__(self, kazr=True, ceilometer=True, timezone = -9, path2database = None):
         self.timezone = timezone
         self.send_message = lambda x: print(x)
-        self.path2database = pathlib.Path('/mnt/telg/Dropbox/projecte/19_ASR_NSA_science/database.db')
+        self.path2database = pathlib.Path(path2database)
         self.db_table_name = "vis_nsascience.0.1"
         self.path2nsascience = pathlib.Path(
             '/mnt/telg/data/arm_data/OLI/tethered_balloon/nsascience/nsascience_avg1min/')
@@ -80,7 +80,7 @@ class Data(object):
     def load_kazr(self, path, return_end=False
                   #               avg = (1,'m')
                   ):
-        kz = arm.read_kazr_nc(path.as_posix())
+        kz = arm.read_kazr_nc(path.as_posix(), timezone = self.timezone)
         #     kz = kz.average_time(avg)
         if return_end:
             return kz.reflectivity.get_timespan()[-1]
@@ -165,7 +165,7 @@ class Data(object):
         cb, cax = plt_tools.colorbar.colorbar_axis_split_off(lc, a)
         # self.lc = lc
         # self.cb, self.cax = cb, cax
-        a.colorbar = cax
+        a.cax = cax
         cb.locator = plt.MaxNLocator(5, prune='both')
         cb.update_ticks()
         cax.set_ylabel('NC$_{POPS}$ (#/cm$^3$)', labelpad=0.5)
@@ -227,7 +227,7 @@ class Data(object):
         # colorbar
 
         cb, cax = plt_tools.colorbar.colorbar_axis_split_off(lc, a)
-        a.colorbar = cax
+        a.cax = cax
         cb.locator = plt.MaxNLocator(5, prune='both')
         cb.update_ticks()
 
@@ -293,12 +293,15 @@ class Data(object):
         # colorbar
 
         cb, cax = plt_tools.colorbar.colorbar_axis_split_off(lc, a)
-        a.colorbar = cax
+        cax.set_ylabel('RH (%)', labelpad=0.5)
 
         cb.locator = plt.MaxNLocator(5, prune='both')
         cb.update_ticks()
-        cax.set_ylabel('RH (%)', labelpad=0.5)
+
+        a.cax = cax
         returns['a'] = a
+        # returns['a'].cax.set_label('buba')
+
         return returns
 
     #     set_t = (a,lc,cb)
@@ -333,10 +336,8 @@ class Data(object):
         where = np.logical_and(self.df_kzar.end_datetime > plot_start, self.df_kzar.start_datetime < plot_end)
         matches_kazr = self.df_kzar[where]
 
-        # idx = self.df_kzar[self.df_kzar.td < pd.to_timedelta(0)].td.abs().idxmin()
-        # matches_kazr = self.df_kzar.loc[idx: idx + 1, :].copy()
-
         matches_kazr['data'] = matches_kazr.paths.apply(self.load_kazr)
+
         txt = ('opend kzar files:')
         for path in matches_kazr.paths:
             txt +='\n\t{}'.format(path.name)
@@ -350,11 +351,7 @@ class Data(object):
 
         where = np.logical_and(self.df_ceil.end_datetime > plot_start, self.df_ceil.start_datetime < plot_end)
         matches_ceil = self.df_ceil[where]
-
-        # idx = self.df_ceil[self.df_ceil.td < pd.to_timedelta(0)].td.abs().idxmin()
-        # matches_ceil = self.df_ceil.loc[idx: idx + 1, :].copy()
-
-        matches_ceil['data'] = matches_ceil.paths.apply(lambda x: arm.read_ceilometer_nc(x.as_posix()))
+        matches_ceil['data'] = matches_ceil.paths.apply(lambda x: arm.read_ceilometer_nc(x.as_posix(), timezone = self.timezone))
         txt = ('opend ceilometer data files:')
         for path in matches_ceil.paths:
             txt +='\n\t{}'.format(path.name)
@@ -383,13 +380,17 @@ class Data(object):
             for at in a:
                 at.clear()
                 try:
-                    at.colorbar.remove()
+                    at.cax.remove()
                 except:
                     pass
         atemp, ahr, apops = a
 
+        # for kz in matches_kazr.data:
+        #     kz.reflectivity.data.index += np.timedelta64(2, 'h')
+
         for at in a:
             for kz in matches_kazr.data:
+                # kz.reflectivity.data.index += np.timedelta64(self.timezone, 'h')
                 kz.reflectivity.plot(snr_max=10, ax=at, zorder=0)
 
             for ceil in matches_ceil.data:
@@ -416,4 +417,6 @@ class Data(object):
         #     outd = {}
         #     outd['a'] = at
         #     out.append(outd)
+        # for at in a:
+        #     a.cax.set_ylabel('buba')
         return out
