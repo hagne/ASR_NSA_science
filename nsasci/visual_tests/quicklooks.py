@@ -11,13 +11,12 @@ import matplotlib.pylab as plt
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class Data(object):
-    def __init__(self, kazr=True, ceilometer=True, timezone = -9, path2database = None):
+    def __init__(self, kazr=True, ceilometer=True, timezone = -9, path2database = None, path2nsascience = '/mnt/telg/data/arm_data/OLI/tethered_balloon/nsascience/nsascience_avg1min/'):
         self.timezone = timezone
         self.send_message = lambda x: print(x)
         self.path2database = pathlib.Path(path2database)
         self.db_table_name = "vis_nsascience.0.1"
-        self.path2nsascience = pathlib.Path(
-            '/mnt/telg/data/arm_data/OLI/tethered_balloon/nsascience/nsascience_avg1min/')
+        self.path2nsascience = pathlib.Path(path2nsascience)
 
         self.path2kazr = pathlib.Path('/mnt/telg/data/arm_data/OLI/kazr_1min/')
         self.path2ceil = pathlib.Path('/mnt/telg/data/arm_data/OLI/ceilometer_1min/')
@@ -41,7 +40,7 @@ class Data(object):
         df_nsa.sort_values('start_datetime', inplace=True)
         # df_nsa['start_date_AKst'] = pd.DatetimeIndex(df_nsa.start_datetime_AKst).date
         df_nsa['end_datetime'] = df_nsa.path.apply(lambda x: self.load_nsascience(x, return_end=True))
-
+        self._tp_df_nsa = df_nsa
         # self.stakunique = np.unique(df_nsa.start_datetime)
         # self.valid_dates = self.stakunique
         self.valid_dates = np.sort(np.unique(np.concatenate((pd.DatetimeIndex(df_nsa.start_datetime + np.timedelta64(self.timezone, 'h')).date, pd.DatetimeIndex(df_nsa.end_datetime+ np.timedelta64(self.timezone, 'h')).date))))# + np.timedelta64(self.timezone, 'h')
@@ -92,7 +91,7 @@ class Data(object):
         #         dsrs = ds.resample(datetime='1min').mean()
         #         dsrs.attrs = ds.attrs
         if return_end:
-            return ds.datetime.values[-1]
+            return ds.time.values[-1]
         else:
             return ds
 
@@ -117,7 +116,7 @@ class Data(object):
             #                 meas = meas.resample(datetime=resample).mean()
 
             colorbar = False
-            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.datetime.values + np.timedelta64(self.timezone, 'h'),
+            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.time.values + np.timedelta64(self.timezone, 'h'),
                                                            meas.altitude.values,
                                                            meas.pops_particle_number_concentration.values,
                                                            ax=a,
@@ -188,18 +187,18 @@ class Data(object):
             #             meas = meas.resample(datetime=resample).mean()
 
             colorbar = False
-            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.datetime.values + np.timedelta64(self.timezone, 'h'),
-                                                           meas.altitude.values, meas.temp.values,
+            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.time.values + np.timedelta64(self.timezone, 'h'),
+                                                           meas.altitude.values, meas.temperature.values,
                                                            ax=a,
                                                            colorbar=colorbar)
 
             out = dict(lc=lc, cm=cm)
-            out['mean'] = float(meas.temp.median().values)
-            out['std'] = float(meas.temp.std().values)
+            out['mean'] = float(meas.temperature.median().values)
+            out['std'] = float(meas.temperature.std().values)
             #         out['cmax'] = out['mean'] + (1 *  out['std'])
             #         out['cmin'] = out['mean'] - (2 *  out['std'])
-            out['cmax'] = meas.temp.max()
-            out['cmin'] = meas.temp.min()
+            out['cmax'] = meas.temperature.max()
+            out['cmin'] = meas.temperature.min()
             out['alt_max'] = meas.altitude.max()
             outs.append(out)
             i += 1
@@ -252,19 +251,19 @@ class Data(object):
 
             colorbar = False
 
-            values = meas.rh.to_pandas()
+            values = meas.relative_humidity.to_pandas()
             values[values < 0] = np.nan
             values[values > 110] = np.nan
-            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.datetime.values + np.timedelta64(self.timezone, 'h'),
+            a, lc, cm = plt_tools.plot.plot_gradiant_color(meas.time.values + np.timedelta64(self.timezone, 'h'),
                                                            meas.altitude.values, values,
                                                            ax=a,
                                                            colorbar=colorbar)
 
             out = dict(lc=lc, cm=cm)
-            out['mean'] = float(meas.rh.median().values)
-            out['std'] = float(meas.rh.std().values)
-            out['cmax'] = meas.rh.max()
-            out['cmin'] = meas.rh.min()  # out['mean'] - (2 *  out['std'])
+            out['mean'] = float(meas.relative_humidity.median().values)
+            out['std'] = float(meas.relative_humidity.std().values)
+            out['cmax'] = meas.relative_humidity.max()
+            out['cmin'] = meas.relative_humidity.min()  # out['mean'] - (2 *  out['std'])
             #         print(out['cmin'])
             out['alt_max'] = meas.altitude.max()
             outs.append(out)
@@ -306,11 +305,12 @@ class Data(object):
 
     #     set_t = (a,lc,cb)
 
-    def plot(self, date, ax=None
+    def plot(self, date, ax=None, plot_engine = 'matplotlib'
              #              df_nsa_aotd, matches_kazr, matches_ceil, if_output_exists = 'error'
              ):
         """
         if_output_exists: str ['skip', 'overwrite', 'error']"""
+
         plot_start = date - np.timedelta64(self.timezone, 'h')
         plot_end = plot_start + datetime.timedelta(days=1)
         # find the data first ... maybe outsource this part
@@ -329,7 +329,7 @@ class Data(object):
         self.df_nsa_aotd = df_nsa_aotd
         self.date = date
 
-        # find corresponding kazr data
+    # find corresponding kazr data
         start_datetime = df_nsa_aotd.start_datetime.min()
         self.df_kzar['td'] = self.df_kzar.start_datetime - start_datetime
 
@@ -343,16 +343,17 @@ class Data(object):
             txt +='\n\t{}'.format(path.name)
         self.send_message(txt)
 
-        self.matches_kazr = matches_kazr
+        # self.matches_kazr = matches_kazr
+        self.active_kazr = matches_kazr
 
-
-        # find corresponding ceilometer data
+    # find corresponding ceilometer data
         self.df_ceil['td'] = self.df_ceil.start_datetime - start_datetime
 
         where = np.logical_and(self.df_ceil.end_datetime > plot_start, self.df_ceil.start_datetime < plot_end)
         matches_ceil = self.df_ceil[where]
         matches_ceil['data'] = matches_ceil.paths.apply(lambda x: arm.read_ceilometer_nc(x.as_posix(), timezone = self.timezone))
         txt = ('opend ceilometer data files:')
+        self.active_ceilometer = matches_ceil
         for path in matches_ceil.paths:
             txt +='\n\t{}'.format(path.name)
         self.send_message(txt)
@@ -387,14 +388,19 @@ class Data(object):
 
         # for kz in matches_kazr.data:
         #     kz.reflectivity.data.index += np.timedelta64(2, 'h')
-
+        self._tp_mcd = matches_ceil.data
         for at in a:
             for kz in matches_kazr.data:
                 # kz.reflectivity.data.index += np.timedelta64(self.timezone, 'h')
-                kz.reflectivity.plot(snr_max=10, ax=at, zorder=0)
+                kz.reflectivity.plot(snr_max=-10, ax=at, zorder=0)
 
             for ceil in matches_ceil.data:
-                ceil.cloudbase.plot(color=colors[1], ax=at, zorder=1)
+                self._tp_ceil = ceil
+                ceil.cloudbase.plot(which = 'all', color=colors[1], ax=at, zorder=1, plot_engine = plot_engine)
+            if matches_ceil.data.shape[0] != 0:
+                leg = at.legend()
+                leg.remove()
+
 
         plot_pops_content = self.plot_pops_NC(df_nsa_aotd, apops)
         plot_temp_content = self.plot_temp(df_nsa_aotd, atemp)
@@ -413,10 +419,5 @@ class Data(object):
         out['temperatur'] = plot_temp_content
         out['relative_humidity'] = plot_rh_content
         out['nc_pops'] = plot_pops_content
-        # for at in a:
-        #     outd = {}
-        #     outd['a'] = at
-        #     out.append(outd)
-        # for at in a:
-        #     a.cax.set_ylabel('buba')
+
         return out

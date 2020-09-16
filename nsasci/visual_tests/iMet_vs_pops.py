@@ -1,4 +1,6 @@
 from atmPy.aerosols.instruments import POPS
+from atmPy.aerosols.instruments.POPS import housekeeping
+
 # import icarus
 import pathlib
 
@@ -19,7 +21,7 @@ import sqlite3
 
 def read_POPS(path):
     # print(path.glob('*'))
-    hk = POPS.read_housekeeping(path, pattern = 'hk', skip_histogram= True)
+    hk = housekeeping.read_file(path, pattern = 'hk', skip_histogram= True)
     hk.get_altitude()
     return hk
 

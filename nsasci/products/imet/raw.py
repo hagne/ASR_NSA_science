@@ -14,6 +14,7 @@ def read_file(path, check4 = 'POPS'):
 
 def read_csv(path, drop_labels=['date [y-m-d GMT]', 'time [h:m:s GMT]', 'milliseconds', 'seconds since midnight [GMT]',
                                 'elapsed minutes'],
+             usecols = 27,
              verbose = False):
     # assert ('POPS' in path.name)
 
@@ -40,7 +41,7 @@ def read_csv(path, drop_labels=['date [y-m-d GMT]', 'time [h:m:s GMT]', 'millise
         return out
 
     def read_data(path, header_lines):
-        df = pd.read_csv(path, skiprows=header_lines, usecols = range(27))  # i
+        df = pd.read_csv(path, skiprows=header_lines, usecols = range(usecols))  # i
 
         # missing data
         df[df == 99999] = np.nan
